@@ -1,0 +1,685 @@
+<!DOCTYPE html>
+<html lang="zh-TW" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HabitPulse | 個人習慣與目標追蹤儀表板</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            slate: {
+              850: '#151e2e',
+              900: '#0f172a',
+              950: '#020617',
+            },
+            brand: {
+              green: '#10b981',
+              orange: '#f97316',
+              blue: '#3b82f6'
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+TC:wght@400;500;700&display=swap');
+    body {
+      font-family: 'Inter', 'Noto Sans TC', sans-serif;
+      background-color: #0b0f19;
+      color: #f8fafc;
+    }
+    .check-anim {
+      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .check-anim:active {
+      transform: scale(0.9);
+    }
+    /* 自訂捲軸 */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #0f172a; }
+    ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: #475569; }
+  </style>
+</head>
+<body class="min-h-screen p-4 md:p-8">
+
+  <div class="max-w-7xl mx-auto space-y-6">
+    
+    <!-- 頂部導覽與標題 -->
+    <header class="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-slate-800">
+      <div>
+        <div class="flex items-center gap-2.5">
+          <div class="p-2 bg-emerald-500/10 border border-emerald-500/30 rounded-lg text-emerald-400">
+            <i data-lucide="activity" class="w-6 h-6"></i>
+          </div>
+          <h1 class="text-2xl font-bold tracking-tight text-white">HabitPulse 習慣數據中心</h1>
+        </div>
+        <p class="text-sm text-slate-400 mt-1" id="currentDateDisplay">載入日期中...</p>
+      </div>
+
+      <div class="flex items-center gap-3">
+        <!-- 切換「今日」模擬檢視 -->
+        <div class="flex items-center bg-slate-900 border border-slate-800 rounded-lg p-1 text-xs">
+          <span class="text-slate-400 px-2">檢視焦點日：</span>
+          <select id="activeDaySelect" class="bg-slate-800 text-white font-medium rounded px-2 py-1 outline-none border border-slate-700 focus:border-emerald-500">
+            <option value="0">週一</option>
+            <option value="1">週二</option>
+            <option value="2">週三</option>
+            <option value="3">週四</option>
+            <option value="4">週五</option>
+            <option value="5">週六</option>
+            <option value="6">週日</option>
+          </select>
+        </div>
+
+        <button onclick="resetWeekData()" class="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 text-xs font-medium transition">
+          <i data-lucide="rotate-ccw" class="w-4 h-4"></i>
+          重置本週
+        </button>
+      </div>
+    </header>
+
+    <!-- 頂部關鍵指標卡片 (KPI Cards) -->
+    <section class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <!-- 今日完成度 -->
+      <div class="bg-slate-900/90 border border-slate-800 rounded-xl p-5 flex items-center justify-between">
+        <div>
+          <p class="text-xs font-medium text-slate-400 uppercase tracking-wider">焦點日目標達成</p>
+          <div class="flex items-baseline gap-2 mt-1">
+            <h2 class="text-3xl font-bold text-white" id="statTodayCount">0/0</h2>
+            <span class="text-xs font-semibold text-emerald-400" id="statTodayPercent">0%</span>
+          </div>
+          <div class="w-36 bg-slate-800 h-1.5 rounded-full mt-3 overflow-hidden">
+            <div id="statTodayBar" class="bg-emerald-500 h-full rounded-full transition-all duration-500" style="width: 0%"></div>
+          </div>
+        </div>
+        <div class="p-3 bg-emerald-500/10 text-emerald-400 rounded-xl">
+          <i data-lucide="check-circle-2" class="w-7 h-7"></i>
+        </div>
+      </div>
+
+      <!-- 本週總達成率 -->
+      <div class="bg-slate-900/90 border border-slate-800 rounded-xl p-5 flex items-center justify-between">
+        <div>
+          <p class="text-xs font-medium text-slate-400 uppercase tracking-wider">本週總執行率</p>
+          <div class="flex items-baseline gap-2 mt-1">
+            <h2 class="text-3xl font-bold text-white" id="statWeekPercent">0%</h2>
+            <span class="text-xs text-slate-400" id="statWeekChecks">共 0 次打卡</span>
+          </div>
+          <p class="text-xs text-slate-500 mt-3">穩定累積每週訓練與日常習慣</p>
+        </div>
+        <div class="p-3 bg-blue-500/10 text-blue-400 rounded-xl">
+          <i data-lucide="bar-chart-3" class="w-7 h-7"></i>
+        </div>
+      </div>
+
+      <!-- 最長連續紀錄 -->
+      <div class="bg-slate-900/90 border border-slate-800 rounded-xl p-5 flex items-center justify-between">
+        <div>
+          <p class="text-xs font-medium text-slate-400 uppercase tracking-wider">本週最佳連續 (Streak)</p>
+          <div class="flex items-baseline gap-2 mt-1">
+            <h2 class="text-3xl font-bold text-orange-400" id="statBestStreak">0 天</h2>
+          </div>
+          <p class="text-xs text-slate-400 mt-3 truncate max-w-[180px]" id="statBestStreakName">尚無紀錄</p>
+        </div>
+        <div class="p-3 bg-orange-500/10 text-orange-400 rounded-xl">
+          <i data-lucide="flame" class="w-7 h-7"></i>
+        </div>
+      </div>
+
+      <!-- 完美達標天數 -->
+      <div class="bg-slate-900/90 border border-slate-800 rounded-xl p-5 flex items-center justify-between">
+        <div>
+          <p class="text-xs font-medium text-slate-400 uppercase tracking-wider">100% 滿貫天數</p>
+          <div class="flex items-baseline gap-2 mt-1">
+            <h2 class="text-3xl font-bold text-purple-400" id="statPerfectDays">0 天</h2>
+            <span class="text-xs text-slate-400">/ 7 天</span>
+          </div>
+          <p class="text-xs text-slate-500 mt-3">單日所有目標全數完成</p>
+        </div>
+        <div class="p-3 bg-purple-500/10 text-purple-400 rounded-xl">
+          <i data-lucide="award" class="w-7 h-7"></i>
+        </div>
+      </div>
+    </section>
+
+    <!-- 主內容區：左側今日清單 + 右側每週矩陣 -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+      
+      <!-- 左側：焦點日快速打卡 & 新增習慣 (佔 4 欄) -->
+      <section class="lg:col-span-4 bg-slate-900/90 border border-slate-800 rounded-xl p-5 flex flex-col justify-between">
+        <div>
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="text-base font-bold text-white flex items-center gap-2">
+              <i data-lucide="list-todo" class="w-5 h-5 text-emerald-400"></i>
+              <span>每日目標清單</span>
+              <span id="focusDayBadge" class="text-xs px-2 py-0.5 bg-emerald-500/20 text-emerald-300 rounded-full font-medium">週三</span>
+            </h3>
+          </div>
+
+          <!-- 今日打卡列表 -->
+          <div id="todayChecklist" class="space-y-2.5 max-h-[360px] overflow-y-auto pr-1">
+            <!-- 由 JS 動態渲染 -->
+          </div>
+        </div>
+
+        <!-- 新增習慣表單 -->
+        <form id="addHabitForm" class="mt-6 pt-4 border-t border-slate-800">
+          <label class="block text-xs font-medium text-slate-400 mb-2">新增每日目標</label>
+          <div class="flex gap-2">
+            <input 
+              type="text" 
+              id="newHabitName" 
+              placeholder="例如：Zone 2 有氧 45m、演算法刷題..." 
+              required
+              class="flex-1 bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500"
+            >
+            <select id="newHabitCategory" class="bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-2 text-xs text-slate-300 focus:outline-none focus:border-emerald-500">
+              <option value="運動">🚴 運動</option>
+              <option value="學習">⚡ 學習</option>
+              <option value="生活">💧 生活</option>
+              <option value="創作">📷 創作</option>
+            </select>
+            <button type="submit" class="bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-2 rounded-lg text-sm font-medium transition flex items-center shrink-0">
+              <i data-lucide="plus" class="w-4 h-4"></i>
+            </button>
+          </div>
+        </form>
+      </section>
+
+      <!-- 右側：每週連續紀錄矩陣 (佔 8 欄) -->
+      <section class="lg:col-span-8 bg-slate-900/90 border border-slate-800 rounded-xl p-5 overflow-x-auto">
+        <div class="flex items-center justify-between mb-4">
+          <div>
+            <h3 class="text-base font-bold text-white flex items-center gap-2">
+              <i data-lucide="calendar-check" class="w-5 h-5 text-blue-400"></i>
+              每週打卡矩陣與連續紀錄
+            </h3>
+            <p class="text-xs text-slate-400 mt-0.5">點擊任一格即可直接切換該日的完成狀態</p>
+          </div>
+        </div>
+
+        <table class="w-full text-left border-collapse min-w-[520px]">
+          <thead>
+            <tr class="border-b border-slate-800 text-xs text-slate-400">
+              <th class="py-3 px-2 font-medium w-48">目標項目</th>
+              <th class="py-3 text-center font-medium day-header" data-day="0">一</th>
+              <th class="py-3 text-center font-medium day-header" data-day="1">二</th>
+              <th class="py-3 text-center font-medium day-header" data-day="2">三</th>
+              <th class="py-3 text-center font-medium day-header" data-day="3">四</th>
+              <th class="py-3 text-center font-medium day-header" data-day="4">五</th>
+              <th class="py-3 text-center font-medium day-header" data-day="5">六</th>
+              <th class="py-3 text-center font-medium day-header" data-day="6">日</th>
+              <th class="py-3 px-2 text-right font-medium">當前連續</th>
+              <th class="py-3 px-1 text-center font-medium w-8"></th>
+            </tr>
+          </thead>
+          <tbody id="habitMatrixBody" class="divide-y divide-slate-800/60 text-sm">
+            <!-- 由 JS 動態渲染 -->
+          </tbody>
+        </table>
+      </section>
+
+    </div>
+
+    <!-- 底部視覺化圖表區 -->
+    <section class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <!-- 圖表 1：每日完成率趨勢圖 -->
+      <div class="bg-slate-900/90 border border-slate-800 rounded-xl p-5">
+        <div class="flex items-center justify-between mb-4">
+          <div>
+            <h3 class="text-base font-bold text-white flex items-center gap-2">
+              <i data-lucide="trending-up" class="w-5 h-5 text-emerald-400"></i>
+              本週每日達成率趨勢 (%)
+            </h3>
+            <p class="text-xs text-slate-400">檢視一週內各天的執行力波動</p>
+          </div>
+        </div>
+        <div class="h-64">
+          <canvas id="dailyTrendChart"></canvas>
+        </div>
+      </div>
+
+      <!-- 圖表 2：各習慣連續天數與累積比較 -->
+      <div class="bg-slate-900/90 border border-slate-800 rounded-xl p-5">
+        <div class="flex items-center justify-between mb-4">
+          <div>
+            <h3 class="text-base font-bold text-white flex items-center gap-2">
+              <i data-lucide="flame" class="w-5 h-5 text-orange-400"></i>
+              各項目連續紀錄 vs 本週總達成天數
+            </h3>
+            <p class="text-xs text-slate-400">橘色為「截至焦點日的連續天數」，綠色為「本週累積天數」</p>
+          </div>
+        </div>
+        <div class="h-64">
+          <canvas id="streakBarChart"></canvas>
+        </div>
+      </div>
+    </section>
+
+  </div>
+
+  <script>
+    const STORAGE_KEY = 'habitpulse_dashboard_v1';
+    const DAY_NAMES = ['週一', '週二', '週三', '週四', '週五', '週六', '週日'];
+
+    // 預設習慣資料（結合運動、課業與生活日常）
+    const defaultHabits = [
+      { id: 'h1', name: 'Zone 2 有氧訓練 / 單車或慢跑', category: '運動', days: [true, true, true, false, false, false, false] },
+      { id: 'h2', name: '專業科目複習 & 筆記整理 (1hr)', category: '學習', days: [true, true, true, false, false, false, false] },
+      { id: 'h3', name: 'C / Python 程式實作練習', category: '學習', days: [false, true, true, false, false, false, false] },
+      { id: 'h4', name: '每日飲水達標 2,500 ml', category: '生活', days: [true, true, true, false, false, false, false] },
+      { id: 'h5', name: '核心肌群與滾筒放鬆 15 分鐘', category: '運動', days: [true, false, true, false, false, false, false] }
+    ];
+
+    // 取得真實星期幾 (轉換為 0=週一 ... 6=週日)
+    function getCurrentDayIndex() {
+      const jsDay = new Date().getDay(); // 0是週日
+      return jsDay === 0 ? 6 : jsDay - 1;
+    }
+
+    let activeDayIndex = getCurrentDayIndex();
+    let habits = loadHabits();
+    let dailyChartInstance = null;
+    let streakChartInstance = null;
+
+    function loadHabits() {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        try { return JSON.parse(saved); } catch (e) { console.error(e); }
+      }
+      return JSON.parse(JSON.stringify(defaultHabits));
+    }
+
+    function saveHabits() {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(habits));
+    }
+
+    // 計算「截至 activeDayIndex 為止」的當前連續天數
+    function calculateCurrentStreak(daysArray, upToDay) {
+      let streak = 0;
+      for (let i = upToDay; i >= 0; i--) {
+        if (daysArray[i]) streak++;
+        else break;
+      }
+      return streak;
+    }
+
+    // 計算本週內最長連續天數
+    function calculateMaxStreakInWeek(daysArray) {
+      let maxS = 0, cur = 0;
+      for (let i = 0; i < 7; i++) {
+        if (daysArray[i]) {
+          cur++;
+          if (cur > maxS) maxS = cur;
+        } else {
+          cur = 0;
+        }
+      }
+      return maxS;
+    }
+
+    // 分類標籤顏色
+    function getCategoryBadge(cat) {
+      const map = {
+        '運動': 'bg-orange-500/15 text-orange-400 border-orange-500/30',
+        '學習': 'bg-blue-500/15 text-blue-400 border-blue-500/30',
+        '生活': 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30',
+        '創作': 'bg-purple-500/15 text-purple-400 border-purple-500/30'
+      };
+      return map[cat] || 'bg-slate-700 text-slate-300';
+    }
+
+    // 切換某習慣在某天的狀態
+    function toggleHabitDay(habitId, dayIdx) {
+      const habit = habits.find(h => h.id === habitId);
+      if (habit) {
+        habit.days[dayIdx] = !habit.days[dayIdx];
+        saveHabits();
+        renderAll();
+      }
+    }
+
+    // 刪除習慣
+    function deleteHabit(habitId) {
+      habits = habits.filter(h => h.id !== habitId);
+      saveHabits();
+      renderAll();
+    }
+
+    // 重置本週所有打卡
+    function resetWeekData() {
+      if (!confirm('確定要清空本週所有的打卡紀錄嗎？')) return;
+      habits.forEach(h => h.days = [false, false, false, false, false, false, false]);
+      saveHabits();
+      renderAll();
+    }
+
+    // 渲染左側「焦點日清單」
+    function renderTodayChecklist() {
+      const container = document.getElementById('todayChecklist');
+      document.getElementById('focusDayBadge').textContent = DAY_NAMES[activeDayIndex];
+
+      if (habits.length === 0) {
+        container.innerHTML = `<div class="text-center py-8 text-slate-500 text-sm">目前還沒有習慣項目，從下方新增一個吧！</div>`;
+        return;
+      }
+
+      container.innerHTML = habits.map(h => {
+        const isDone = h.days[activeDayIndex];
+        const currentStreak = calculateCurrentStreak(h.days, activeDayIndex);
+        return `
+          <div onclick="toggleHabitDay('${h.id}', ${activeDayIndex})" 
+               class="group flex items-center justify-between p-3 rounded-xl border transition cursor-pointer select-none ${
+                 isDone 
+                   ? 'bg-emerald-950/30 border-emerald-500/40 text-slate-200' 
+                   : 'bg-slate-950/60 border-slate-800/80 hover:border-slate-700 text-slate-300'
+               }">
+            <div class="flex items-center gap-3 min-w-0">
+              <div class="check-anim w-5 h-5 rounded-md flex items-center justify-center border ${
+                isDone ? 'bg-emerald-500 border-emerald-500 text-slate-950' : 'border-slate-600 group-hover:border-emerald-400'
+              }">
+                ${isDone ? '<i data-lucide="check" class="w-3.5 h-3.5 stroke-[3]"></i>' : ''}
+              </div>
+              <div class="truncate">
+                <p class="text-sm font-medium truncate ${isDone ? 'line-through text-slate-400' : 'text-white'}">${h.name}</p>
+                <div class="flex items-center gap-2 mt-0.5">
+                  <span class="text-[10px] px-1.5 py-0.2 rounded border ${getCategoryBadge(h.category)}">${h.category}</span>
+                  <span class="text-[11px] text-slate-400 flex items-center gap-0.5">
+                    🔥 連續 ${currentStreak} 天
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    // 渲染右側「每週打卡矩陣」
+    function renderWeeklyMatrix() {
+      const tbody = document.getElementById('habitMatrixBody');
+
+      // 高亮當前焦點日表頭
+      document.querySelectorAll('.day-header').forEach(th => {
+        const d = parseInt(th.getAttribute('data-day'));
+        if (d === activeDayIndex) {
+          th.classList.add('text-emerald-400', 'font-bold');
+        } else {
+          th.classList.remove('text-emerald-400', 'font-bold');
+        }
+      });
+
+      if (habits.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="10" class="text-center py-8 text-slate-500">暫無資料</td></tr>`;
+        return;
+      }
+
+      tbody.innerHTML = habits.map(h => {
+        const streak = calculateCurrentStreak(h.days, activeDayIndex);
+        const totalWeek = h.days.filter(Boolean).length;
+
+        const dayCells = h.days.map((done, idx) => {
+          const isFocus = idx === activeDayIndex;
+          return `
+            <td class="py-3 text-center">
+              <button onclick="toggleHabitDay('${h.id}', ${idx})" 
+                      class="check-anim w-8 h-8 rounded-lg inline-flex items-center justify-center border transition ${
+                        done 
+                          ? 'bg-emerald-500 border-emerald-400 text-slate-950 shadow-sm shadow-emerald-500/20' 
+                          : isFocus 
+                            ? 'bg-slate-800/90 border-slate-600 hover:border-emerald-400 text-transparent'
+                            : 'bg-slate-950 border-slate-800 hover:border-slate-700 text-transparent'
+                      }">
+                <i data-lucide="check" class="w-4 h-4 stroke-[3]"></i>
+              </button>
+            </td>
+          `;
+        }).join('');
+
+        return `
+          <tr class="hover:bg-slate-800/30 transition">
+            <td class="py-3 px-2">
+              <div class="font-medium text-white truncate max-w-[180px]" title="${h.name}">${h.name}</div>
+              <div class="text-[11px] text-slate-400 mt-0.5">${h.category} · 本週 ${totalWeek}/7 天</div>
+            </td>
+            ${dayCells}
+            <td class="py-3 px-2 text-right">
+              <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold ${
+                streak >= 3 ? 'bg-orange-500/15 text-orange-400 border border-orange-500/30' : 'bg-slate-800 text-slate-300'
+              }">
+                🔥 ${streak} 天
+              </span>
+            </td>
+            <td class="py-3 px-1 text-center">
+              <button onclick="deleteHabit('${h.id}')" class="text-slate-500 hover:text-rose-400 p-1 rounded transition" title="刪除此目標">
+                <i data-lucide="trash-2" class="w-4 h-4"></i>
+              </button>
+            </td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    // 更新頂部 KPI 統計卡片
+    function updateStats() {
+      const totalHabits = habits.length;
+      if (totalHabits === 0) {
+        document.getElementById('statTodayCount').textContent = '0/0';
+        document.getElementById('statTodayPercent').textContent = '0%';
+        document.getElementById('statTodayBar').style.width = '0%';
+        document.getElementById('statWeekPercent').textContent = '0%';
+        document.getElementById('statWeekChecks').textContent = '共 0 次打卡';
+        document.getElementById('statBestStreak').textContent = '0 天';
+        document.getElementById('statBestStreakName').textContent = '尚無紀錄';
+        document.getElementById('statPerfectDays').textContent = '0 天';
+        return;
+      }
+
+      // 1. 焦點日完成數
+      const todayDone = habits.filter(h => h.days[activeDayIndex]).length;
+      const todayPct = Math.round((todayDone / totalHabits) * 100);
+      document.getElementById('statTodayCount').textContent = `${todayDone}/${totalHabits}`;
+      document.getElementById('statTodayPercent').textContent = `${todayPct}%`;
+      document.getElementById('statTodayBar').style.width = `${todayPct}%`;
+
+      // 2. 本週總達成率
+      let totalChecks = 0;
+      habits.forEach(h => {
+        totalChecks += h.days.filter(Boolean).length;
+      });
+      const weekPct = Math.round((totalChecks / (totalHabits * 7)) * 100);
+      document.getElementById('statWeekPercent').textContent = `${weekPct}%`;
+      document.getElementById('statWeekChecks').textContent = `共 ${totalChecks} / ${totalHabits * 7} 次`;
+
+      // 3. 本週最佳連續天數
+      let bestStreak = 0;
+      let bestHabitName = '尚無連續紀錄';
+      habits.forEach(h => {
+        const maxS = calculateMaxStreakInWeek(h.days);
+        if (maxS > bestStreak) {
+          bestStreak = maxS;
+          bestHabitName = h.name;
+        }
+      });
+      document.getElementById('statBestStreak').textContent = `${bestStreak} 天`;
+      document.getElementById('statBestStreakName').textContent = bestHabitName;
+
+      // 4. 完美達標天數 (100% 滿貫)
+      let perfectDays = 0;
+      for (let d = 0; d < 7; d++) {
+        const allDone = habits.every(h => h.days[d]);
+        if (allDone) perfectDays++;
+      }
+      document.getElementById('statPerfectDays').textContent = `${perfectDays} 天`;
+    }
+
+    // 繪製與更新 Chart.js 圖表
+    function updateCharts() {
+      const totalHabits = habits.length;
+
+      // 計算週一至週日每天的完成率 (%)
+      const dailyPercentages = DAY_NAMES.map((_, dayIdx) => {
+        if (totalHabits === 0) return 0;
+        const doneCount = habits.filter(h => h.days[dayIdx]).length;
+        return Math.round((doneCount / totalHabits) * 100);
+      });
+
+      // 圖表 1：每日完成率趨勢
+      const ctxDaily = document.getElementById('dailyTrendChart').getContext('2d');
+      if (dailyChartInstance) dailyChartInstance.destroy();
+
+      dailyChartInstance = new Chart(ctxDaily, {
+        type: 'bar',
+        data: {
+          labels: DAY_NAMES,
+          datasets: [{
+            label: '單日達成率 (%)',
+            data: dailyPercentages,
+            backgroundColor: DAY_NAMES.map((_, i) => i === activeDayIndex ? '#10b981' : '#3b82f680'),
+            borderColor: DAY_NAMES.map((_, i) => i === activeDayIndex ? '#34d399' : '#3b82f6'),
+            borderWidth: 1.5,
+            borderRadius: 6,
+            maxBarThickness: 38
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              callbacks: {
+                label: (ctx) => ` 達成率: ${ctx.parsed.y}%`
+              }
+            }
+          },
+          scales: {
+            y: {
+              beginAtZero: true,
+              max: 100,
+              grid: { color: '#1e293b' },
+              ticks: { color: '#94a3b8', callback: v => v + '%' }
+            },
+            x: {
+              grid: { display: false },
+              ticks: { color: '#cbd5e1' }
+            }
+          }
+        }
+      });
+
+      // 圖表 2：各習慣當前連續天數 vs 本週累積天數
+      const habitLabels = habits.map(h => h.name.length > 12 ? h.name.slice(0, 12) + '…' : h.name);
+      const currentStreaks = habits.map(h => calculateCurrentStreak(h.days, activeDayIndex));
+      const totalWeekDays = habits.map(h => h.days.filter(Boolean).length);
+
+      const ctxStreak = document.getElementById('streakBarChart').getContext('2d');
+      if (streakChartInstance) streakChartInstance.destroy();
+
+      streakChartInstance = new Chart(ctxStreak, {
+        type: 'bar',
+        data: {
+          labels: habitLabels,
+          datasets: [
+            {
+              label: '當前連續天數 (Streak)',
+              data: currentStreaks,
+              backgroundColor: '#f97316',
+              borderRadius: 4,
+              barPercentage: 0.7
+            },
+            {
+              label: '本週累積完成天數',
+              data: totalWeekDays,
+              backgroundColor: '#10b981',
+              borderRadius: 4,
+              barPercentage: 0.7
+            }
+          ]
+        },
+        options: {
+          indexAxis: 'y',
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              position: 'bottom',
+              labels: { color: '#cbd5e1', boxWidth: 12, font: { size: 11 } }
+            }
+          },
+          scales: {
+            x: {
+              beginAtZero: true,
+              max: 7,
+              grid: { color: '#1e293b' },
+              ticks: { color: '#94a3b8', stepSize: 1, callback: v => v + ' 天' }
+            },
+            y: {
+              grid: { display: false },
+              ticks: { color: '#e2e8f0', font: { size: 12 } }
+            }
+          }
+        }
+      });
+    }
+
+    // 統一重新渲染
+    function renderAll() {
+      renderTodayChecklist();
+      renderWeeklyMatrix();
+      updateStats();
+      updateCharts();
+      lucide.createIcons();
+    }
+
+    // 初始化事件與日期
+    document.addEventListener('DOMContentLoaded', () => {
+      // 設定日期文字
+      const now = new Date();
+      const dateStr = now.toLocaleDateString('zh-TW', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' });
+      document.getElementById('currentDateDisplay').textContent = `今天是 ${dateStr} · 保持節奏，累積你的連續紀錄`;
+
+      // 初始化下拉選單為今天
+      const selectEl = document.getElementById('activeDaySelect');
+      selectEl.value = activeDayIndex;
+      selectEl.addEventListener('change', (e) => {
+        activeDayIndex = parseInt(e.target.value, 10);
+        renderAll();
+      });
+
+      // 新增習慣表單處理
+      document.getElementById('addHabitForm').addEventListener('submit', (e) => {
+        e.preventDefault();
+        const nameInput = document.getElementById('newHabitName');
+        const catSelect = document.getElementById('newHabitCategory');
+        const name = nameInput.value.trim();
+        if (!name) return;
+
+        habits.push({
+          id: 'h_' + Date.now(),
+          name: name,
+          category: catSelect.value,
+          days: [false, false, false, false, false, false, false]
+        });
+
+        nameInput.value = '';
+        saveHabits();
+        renderAll();
+      });
+
+      renderAll();
+    });
+  </script>
+</body>
+</html>
